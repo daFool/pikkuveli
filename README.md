@@ -1,0 +1,2 @@
+# pikkuveli
+Serendipity plugin pikkuveli
