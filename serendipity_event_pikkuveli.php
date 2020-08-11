@@ -1,40 +1,84 @@
 <?php
+/**
+ * Pikkuveli
+ * 
+ * PHP version 7.3
+ * 
+ * Pikkuveli ("little brother") time tracking application for Serendipity
+ * 
+ * @category	Integration
+ * @package		Pikkuveli
+ * @author		Mauri "daFool" Sahlberg <mauri.sahlberg@gmail.com>
+ * @copyright	2020 Mauri Sahlberg, Helsinki
+ * @license		BSD-2 https://opensource.org/licenses/BSD-2-Clause
+ * @link		https://github.com/daFool/pikkuveli
+ */
 
-// Tab-width: 3
-// Probe for a language include with constants. Still include defines later on, if some constants were missing
-$probelang = dirname(__FILE__) . '/' . $serendipity['charset'] . 'lang_' . $serendipity['lang'] . '.inc.php';
-if (file_exists($probelang)) {
-    include $probelang;
+ if (IN_serendipity !== true) {
+    die ("Don't hack!");
 }
+@serendipity_plugin_api::load_language(dirname(__FILE__));
 
-include dirname(__FILE__).'/lang_en.inc.php';
-
+/**
+ * serendipity_event_pikkuveli
+ * 
+ * Interface class for Serendipity
+ * 
+ * @category	Integration
+ * @package		Pikkuveli
+ * @author		Mauri "daFool" Sahlberg <mauri.sahlberg@gmail.com>
+ * @copyright	2020 Mauri Sahlberg, Helsinki
+ * @license		BSD-2 https://opensource.org/licenses/BSD-2-Clause
+ * @link		https://github.com/daFool/pikkuveli
+ */
+ 
 class serendipity_event_pikkuveli extends serendipity_event {
-	var $pikkuveliMessages;
+	/**
+	 * @var array $pikkuveliMessages	Message-array
+	 */
+	private $pikkuveliMessages;
 	
+	/**
+	 * Introspect
+	 * 
+	 * Apparently called when "plugin" is presented for user in plugin-list. And probably by Spartacus as well.
+	 * @param array &$propbag	Propertybag
+	 */
 	function introspect(&$propbag) {
-		$propbag->add('name',          PLUGIN_PIKKUVELI_TITLE);
-		$propbag->add('description',   PLUGIN_PIKKUVELI_DESC);
+		$propbag->add('name',         	PLUGIN_PIKKUVELI_TITLE);
+		$propbag->add('description',   	PLUGIN_PIKKUVELI_DESC);
+		$propbag->add('stackable',		false);
 		$propbag->add('requirements',  array(
-		'serendipity' => '0.9.1',
-		'smarty'      => '2.6.7',
-		'php'         => '4.1.0'
+			'serendipity' => '0.9.1',
+			'smarty'      => '2.6.7',
+			'php'         => '4.1.0'
 		));
-
-		$propbag->add('version',      '0.5');
-		$propbag->add('author',       'Mauri Sahlberg (mos@iki.fi)');
-		$propbag->add('stackable',    false);
-		$propbag->add('event_hooks',	array('backend_display' => true,'backend_publish'=>true,'backend_save'=>true));
+		$propbag->add('version',      	'0.6');
+		$propbag->add('author',       	'Mauri "daFool" Sahlberg (mauri.sahlberg@gmail.com)');
+		$propbag->add('event_hooks',	array(
+											'backend_display' => true,
+											'backend_publish'=>true,
+											'backend_save'=>true));
 
 		$propbag->add('groups', 		array('BACKEND_EDITOR'));
-		$propbag->add('configuration',array( 	PLUGIN_PIKKUVELI_LASTEDIT_START_PROPERTY,
-															PLUGIN_PIKKUVELI_LASTEDIT_END_PROPERTY,
-															PLUGIN_PIKKUVELI_LASTEDIT_LAST_PROPERTY,
-															PLUGIN_PIKKUVELI_TOTAL_PROPERTY));
+		$propbag->add('configuration',	array(
+											PLUGIN_PIKKUVELI_LASTEDIT_START_PROPERTY,
+											PLUGIN_PIKKUVELI_LASTEDIT_END_PROPERTY,
+											PLUGIN_PIKKUVELI_LASTEDIT_LAST_PROPERTY,
+											PLUGIN_PIKKUVELI_TOTAL_PROPERTY
+										)
+		);
 
 		$this->dependencies = array('serendipity_event_entryproperties' => 'keep');
 	}
 
+	/**
+	 * introspect_config_item
+	 * 
+	 * Called on plugin configuration
+	 * @param string 	$name	Configuration item
+	 * @param array		&$propbag	Propertybag
+	 */
 	function introspect_config_item($name, &$propbag) {
 		switch ($name) {
 			case PLUGIN_PIKKUVELI_LASTEDIT_START_PROPERTY:
@@ -64,8 +108,11 @@ class serendipity_event_pikkuveli extends serendipity_event {
 		return true;
 	}
 
-	/** Create table for stamps, called from plugin install.
-	@return true
+	/** 
+	 * Install
+	 * 
+	 * Creates table for timestamps. Called from plugin install.
+	 * 	@return true
 	*/
 	function install() {
 		global $serendipity;
@@ -73,17 +120,20 @@ class serendipity_event_pikkuveli extends serendipity_event {
 		$q = "CREATE TABLE {$serendipity['dbPrefix']}pikkuveli_stamps (
     		entry_id 	INTEGER NOT NULL,
     		starts 		varchar(20) NOT NULL,
-    		ends			varchar(20) NOT NULL,
+			ends		varchar(20) NOT NULL,
     		seconds		bigint NOT NULL,
     		comment		text);";
 		serendipity_db_schema_import($q);
 		return true;
 	}
 
-	/** Drops stamp-table, called from plugin uninstall.
-	@return true
-	*/
-	function uninstall() {
+	/** 
+	 * Uninstall
+	 * 
+	 * Drops stamp-table, called from plugin uninstall.
+	 * @return true
+	 */
+	function uninstall(&$propbag) {
 		global $serendipity;
 
 		$q = "DROP TABLE {$serendipity['dbPrefix']}pikkuveli_stamps;";
@@ -91,9 +141,12 @@ class serendipity_event_pikkuveli extends serendipity_event {
 		return true;
 	}
 
-	/** Returns unix-localtime-compatible seconds
-	@param $ts Timestamp in "YYYY-MM-DD HH[:.]MM[:.]SS" format.
-	@return either seconds or null if timestamp did not match the format
+	/** 
+	 * Returns unix-localtime-compatible seconds
+	 * 
+	 * @param string	$ts Timestamp in "YYYY-MM-DD HH[:.]MM[:.]SS" format.
+	 * 
+	 * @return either seconds or null if timestamp did not match the format
 	*/
 	function mytimestamp2unixtime($ts) {
 		@list($date,$time) = explode(' ',$ts);
@@ -114,10 +167,14 @@ class serendipity_event_pikkuveli extends serendipity_event {
 	}
 
 	/** Updates extended entry-properties
-	@param $last The latest edit of entry
-	@param $total Total seconds spent at editing the entry
+	 * 
+	 * Requires extended properties to work and that the extended properties have
+	 * two customfields that are named as Pikkuveli fields with same name. 
+	 * 
+	 * @param $last The latest edit of entry
+	 * @param $total Total seconds spent at editing the entry
 	*/
-	function fixEntryProps($last,$total) {
+	function fixEntryProps($last, $total) {
 		global $serendipity;
 		
 		$to = $this->get_config(PLUGIN_PIKKUVELI_TOTAL_PROPERTY);
@@ -148,10 +205,10 @@ class serendipity_event_pikkuveli extends serendipity_event {
 	}
 
 	/** Builds the lastedit stamp
-	@param $start "YYYY-MM-DD HH.MM.SS"
-	@param $end "YYYY-MM-DD HH.MM.SS"
-	@param $seconds Seconds spent in editing 
-	@return array
+	* @param $start "YYYY-MM-DD HH.MM.SS"
+	* @param $end "YYYY-MM-DD HH.MM.SS"
+	* @param $seconds Seconds spent in editing 
+	* @return array
 	*/
 	function buildLast($start,$end,$seconds) {
 		$last=array();
@@ -162,10 +219,10 @@ class serendipity_event_pikkuveli extends serendipity_event {
 	}
 	 
 	/** Fetches timestamps associated with this entry
-	@param $e_id	Entry identifier
-	@return $result['rivit'] array of timestamps in format "Start date+time#End date+time#Comment#seconds"
-	@return $result['summa'] sum of seconds spent in editing this entry
-	@return $result['last'] latest edit of this entry in format "start-end time spent"
+	* @param $e_id	Entry identifier
+	* @return $result['rivit'] array of timestamps in format "Start date+time#End date+time#Comment#seconds"
+	* @return $result['summa'] sum of seconds spent in editing this entry
+	* @return $result['last'] latest edit of this entry in format "start-end time spent"
 	*/
 	
 	function fetchOldies($e_id) {
@@ -206,8 +263,8 @@ class serendipity_event_pikkuveli extends serendipity_event {
 	}
 	
 	/** Formats seconds to time
-	@param $seconds to format
-	@return "HH.MM.SS"
+	* @param $seconds to format
+	* @return "HH.MM.SS"
 	*/
 	function toHours($seconds) {
 		$minutes = floor($seconds/60);
@@ -221,6 +278,8 @@ class serendipity_event_pikkuveli extends serendipity_event {
 	*/
 	function startStamp($e_id) {
 		global $serendipity;
+
+		$offset = ($serendipity['serverOffsetHours']??0)*60*60;
 		$hasid="nope";
 		/* Is this the first edit? */
 		if(!is_null($e_id)) {
@@ -229,14 +288,15 @@ class serendipity_event_pikkuveli extends serendipity_event {
 			$this->fixEntryProps($result['last'],$result['summa']);
 			$hasid="yup";
 		}
-		$ts = date('Y-m-d H.i.s');
+		
+		$ts = date('Y-m-d H.i.s', time()+$offset);
 		/* Build input-fields */
 		require('pikkuveli_form.php');
 		return;
 	}
 
 	/** Delete one timestamp from the database
-	@param $todelete Stamp to delete in format "start#end#comment#seconds"
+	* @param $todelete Stamp to delete in format "start#end#comment#seconds"
 	*/
 	function deleteStamp($todelete) {
 		global $serendipity;
@@ -257,18 +317,19 @@ class serendipity_event_pikkuveli extends serendipity_event {
 	}
 	
 	/** Backend publish a.k.a. save 
-	@param $e_id Entry id
+	* @param $e_id Entry id
 	*/
 	function endStamp($e_id) {
 		global $serendipity;
 		
+		$offset = ($serendipity['serverOffsetHours']??0)*60*60;
 		$this->pikkuveliMessages="";
 		
 		/* Just to get the necessary variables. */
 		$res = $this->fetchOldies($e_id);
 		
 		/* End of the edit, a.k.a. current time and date */
-		$ets = date('Y-m-d H.i.s');
+		$ets = date('Y-m-d H.i.s', time()+$offset);
 		
 		/* Start of the edit, from the hidden input field pikkuveli_start generated on backend-display */
 		$sts = serendipity_db_escape_string($serendipity['POST']['pikkuveli_start']);
@@ -341,8 +402,9 @@ class serendipity_event_pikkuveli extends serendipity_event {
 
 	/**
 	 * Guess which one?
-	 @param $e_id	Entry id
-	 return true */
+	*  @param $e_id	Entry id
+	*  @return true 
+	*/
 	function doDisplay($e_id) {
 		global $serendipity;
 		
@@ -364,8 +426,8 @@ class serendipity_event_pikkuveli extends serendipity_event {
 	}
 	
 	/** Serendipity's plugin event hook. We should be called after extended properties to
-	get things to work properly. Unfortunately I know no method to ensure that nor way to
-	ensure that user install us twice, which also will break things...
+	* get things to work properly. Unfortunately I know no method to ensure that nor way to
+	* ensure that user install us twice, which also will break things...
 	*/
 	function event_hook($event, &$bag, &$eventData, $addData = null) {
 		global $serendipity;
@@ -383,9 +445,9 @@ class serendipity_event_pikkuveli extends serendipity_event {
 					return true;
 			}
 		}
-		return true;
+		return false;
 	}
 }
 
-/* vim: set sts=3 ts=3 expandtab : */
+/* vim: set sts=3 ts=4 expandtab : */
 ?>
